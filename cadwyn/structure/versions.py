@@ -66,15 +66,23 @@ class VersionChange:
     description: ClassVar[str] = Sentinel
     is_hidden_from_changelog: bool = False
     instructions_to_migrate_to_previous_version: ClassVar[Sequence[PossibleInstructions]] = Sentinel
-    alter_schema_instructions: ClassVar[list[AlterSchemaSubInstruction | SchemaHadInstruction]] = Sentinel
-    alter_enum_instructions: ClassVar[list[AlterEnumSubInstruction]] = Sentinel
-    alter_endpoint_instructions: ClassVar[list[AlterEndpointSubInstruction]] = Sentinel
-    alter_request_by_schema_instructions: ClassVar[dict[type[BaseModel], list[_AlterRequestBySchemaInstruction]]] = (
+    alter_schema_instructions: ClassVar[list[AlterSchemaSubInstruction | SchemaHadInstruction]] = (
         Sentinel
     )
-    alter_request_by_path_instructions: ClassVar[dict[str, list[_AlterRequestByPathInstruction]]] = Sentinel
-    alter_response_by_schema_instructions: ClassVar[dict[type, list[_AlterResponseBySchemaInstruction]]] = Sentinel
-    alter_response_by_path_instructions: ClassVar[dict[str, list[_AlterResponseByPathInstruction]]] = Sentinel
+    alter_enum_instructions: ClassVar[list[AlterEnumSubInstruction]] = Sentinel
+    alter_endpoint_instructions: ClassVar[list[AlterEndpointSubInstruction]] = Sentinel
+    alter_request_by_schema_instructions: ClassVar[
+        dict[type[BaseModel], list[_AlterRequestBySchemaInstruction]]
+    ] = Sentinel
+    alter_request_by_path_instructions: ClassVar[
+        dict[str, list[_AlterRequestByPathInstruction]]
+    ] = Sentinel
+    alter_response_by_schema_instructions: ClassVar[
+        dict[type, list[_AlterResponseBySchemaInstruction]]
+    ] = Sentinel
+    alter_response_by_path_instructions: ClassVar[
+        dict[str, list[_AlterResponseByPathInstruction]]
+    ] = Sentinel
     _bound_version_bundle: "VersionBundle | None"
 
     def __init_subclass__(cls, _abstract: bool = False) -> None:
@@ -119,7 +127,9 @@ class VersionChange:
             elif isinstance(alter_instruction, AlterEndpointSubInstruction):
                 cls.alter_endpoint_instructions.append(alter_instruction)
             elif isinstance(alter_instruction, staticmethod):  # pragma: no cover
-                raise NotImplementedError(f'"{alter_instruction}" is an unacceptable version change instruction')
+                raise NotImplementedError(
+                    f'"{alter_instruction}" is an unacceptable version change instruction'
+                )
             else:
                 assert_never(alter_instruction)
 
@@ -184,7 +194,9 @@ class VersionChangeWithSideEffects(VersionChange, _abstract=True):
             )
 
     @classproperty
-    def is_applied(cls: type["VersionChangeWithSideEffects"]) -> bool:  # pyright: ignore[reportGeneralTypeIssues]
+    def is_applied(
+        cls: type["VersionChangeWithSideEffects"],
+    ) -> bool:  # pyright: ignore[reportGeneralTypeIssues]
         if (
             cls._bound_version_bundle is None
             or cls not in cls._bound_version_bundle._version_changes_to_version_mapping
@@ -208,7 +220,9 @@ class Version:
         self.changes = changes
 
     @property
-    @deprecated("'version_changes' attribute is deprecated and will be removed in Cadwyn 5.x.x. Use 'changes' instead.")
+    @deprecated(
+        "'version_changes' attribute is deprecated and will be removed in Cadwyn 5.x.x. Use 'changes' instead."
+    )
     def version_changes(self):  # pragma: no cover
         return self.changes
 
@@ -235,7 +249,9 @@ class HeadVersion:
                 )
 
     @property
-    @deprecated("'version_changes' attribute is deprecated and will be removed in Cadwyn 5.x.x. Use 'changes' instead.")
+    @deprecated(
+        "'version_changes' attribute is deprecated and will be removed in Cadwyn 5.x.x. Use 'changes' instead."
+    )
     def version_changes(self):  # pragma: no cover
         return self.changes
 
@@ -270,7 +286,9 @@ class VersionBundle:
                 "Versions are not sorted correctly. Please sort them in descending order.",
             )
         if not self.versions:
-            raise CadwynStructureError("You must define at least one non-head version in a VersionBundle.")
+            raise CadwynStructureError(
+                "You must define at least one non-head version in a VersionBundle."
+            )
         if self.versions[-1].changes:
             raise CadwynStructureError(
                 f'The first version "{self.versions[-1].value}" cannot have any version changes. '
@@ -332,13 +350,19 @@ class VersionBundle:
         for defined_version in self.version_dates:
             if defined_version <= version:
                 return defined_version
-        raise CadwynError("You tried to migrate to version that is earlier than the first version which is prohibited.")
+        raise CadwynError(
+            "You tried to migrate to version that is earlier than the first version which is prohibited."
+        )
 
     @functools.cached_property
     def _version_changes_to_version_mapping(
         self,
     ) -> dict[type[VersionChange] | type[VersionChangeWithSideEffects], VersionDate]:
-        return {version_change: version.value for version in self.versions for version_change in version.changes}
+        return {
+            version_change: version.value
+            for version in self.versions
+            for version_change in version.changes
+        }
 
     async def _migrate_request(
         self,
@@ -357,24 +381,34 @@ class VersionBundle:
             if v.value <= current_version:
                 continue
             for version_change in v.changes:
-                if body_type is not None and body_type in version_change.alter_request_by_schema_instructions:
-                    for instruction in version_change.alter_request_by_schema_instructions[body_type]:
+                if (
+                    body_type is not None
+                    and body_type in version_change.alter_request_by_schema_instructions
+                ):
+                    for instruction in version_change.alter_request_by_schema_instructions[
+                        body_type
+                    ]:
                         instruction(request_info)
                 if path in version_change.alter_request_by_path_instructions:
                     for instruction in version_change.alter_request_by_path_instructions[path]:
                         if method in instruction.methods:  # pragma: no branch # safe branch to skip
                             instruction(request_info)
-        request.scope["headers"] = tuple((key.encode(), value.encode()) for key, value in request_info.headers.items())
+        request.scope["headers"] = tuple(
+            (key.encode(), value.encode()) for key, value in request_info.headers.items()
+        )
         del request._headers
         # Remember this: if len(body_params) == 1, then route.body_schema == route.dependant.body_params[0]
-        dependencies, errors, _, _, _ = await solve_dependencies(
+        result = await solve_dependencies(
             request=request,
             response=response,
             dependant=head_dependant,
             body=request_info.body,
             dependency_overrides_provider=head_route.dependency_overrides_provider,
             async_exit_stack=exit_stack,
+            embed_body_fields=False,
         )
+        dependencies = result.values
+        errors = result.errors
         if errors:
             raise CadwynHeadRequestValidationError(
                 _normalize_errors(errors), body=request_info.body, version=current_version
@@ -406,7 +440,10 @@ class VersionBundle:
             for version_change in v.changes:
                 migrations_to_apply: list[_BaseAlterResponseInstruction] = []
 
-                if head_response_model and head_response_model in version_change.alter_response_by_schema_instructions:
+                if (
+                    head_response_model
+                    and head_response_model in version_change.alter_response_by_schema_instructions
+                ):
                     migrations_to_apply.extend(
                         version_change.alter_response_by_schema_instructions[head_response_model]
                     )
@@ -499,7 +536,9 @@ class VersionBundle:
             kwargs.pop(response_param_name)
         try:
             if is_async_callable(func_to_get_response_from):
-                response_or_response_body: FastapiResponse | object = await func_to_get_response_from(**kwargs)
+                response_or_response_body: FastapiResponse | object = (
+                    await func_to_get_response_from(**kwargs)
+                )
             else:
                 response_or_response_body: FastapiResponse | object = await run_in_threadpool(
                     func_to_get_response_from,
@@ -524,7 +563,10 @@ class VersionBundle:
             if isinstance(response_or_response_body, StreamingResponse | FileResponse):
                 body = None
             elif response_or_response_body.body:
-                if isinstance(response_or_response_body, JSONResponse) or raised_exception is not None:
+                if (
+                    isinstance(response_or_response_body, JSONResponse)
+                    or raised_exception is not None
+                ):
                     body = json.loads(response_or_response_body.body)
                 else:
                     body = response_or_response_body.body.decode(response_or_response_body.charset)
@@ -534,7 +576,9 @@ class VersionBundle:
 
             response_info = ResponseInfo(response_or_response_body, body)
         else:
-            if fastapi_response_dependency.status_code is not None:  # pyright: ignore[reportUnnecessaryComparison]
+            if (
+                fastapi_response_dependency.status_code is not None
+            ):  # pyright: ignore[reportUnnecessaryComparison]
                 status_code = fastapi_response_dependency.status_code
             elif route.status_code is not None:
                 status_code = route.status_code
@@ -577,7 +621,9 @@ class VersionBundle:
                     isinstance(response_info.body, str)
                     and response_info._response.headers.get("content-type") != "application/json"
                 ):
-                    response_info._response.body = response_info.body.encode(response_info._response.charset)
+                    response_info._response.body = response_info.body.encode(
+                        response_info._response.charset
+                    )
                 else:
                     response_info._response.body = json.dumps(
                         response_info.body,
@@ -632,7 +678,9 @@ class VersionBundle:
             and body_field_alias in kwargs
         ):
             raw_body: BaseModel | None = kwargs.get(body_field_alias)
-            if raw_body is None:  # pragma: no cover # This is likely an impossible case but we would like to be safe
+            if (
+                raw_body is None
+            ):  # pragma: no cover # This is likely an impossible case but we would like to be safe
                 body = None
             # It means we have a dict or a list instead of a full model.
             # This covers the following use case in the endpoint definition: "payload: dict = Body(None)"
@@ -722,7 +770,11 @@ def _add_keyword_only_parameter(
         parameters=(
             [
                 *list(signature.parameters.values()),
-                inspect.Parameter(param_name, kind=inspect._ParameterKind.KEYWORD_ONLY, annotation=param_annotation),
+                inspect.Parameter(
+                    param_name,
+                    kind=inspect._ParameterKind.KEYWORD_ONLY,
+                    annotation=param_annotation,
+                ),
             ]
         ),
     )

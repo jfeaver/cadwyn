@@ -64,10 +64,14 @@ class HeaderVersioningMiddleware(BaseHTTPMiddleware):
                     request=request,
                     dependant=self.version_header_validation_dependant,
                     async_exit_stack=async_exit_stack,
+                    embed_body_fields=False,
                 )
-                values, errors, *_ = solved_result
+                values = solved_result.values
+                errors = solved_result.errors
                 if errors:
-                    return self.default_response_class(status_code=422, content=_normalize_errors(errors))
+                    return self.default_response_class(
+                        status_code=422, content=_normalize_errors(errors)
+                    )
                 api_version = cast(date, values[self.api_version_header_name.replace("-", "_")])
                 self.api_version_var.set(api_version)
 
